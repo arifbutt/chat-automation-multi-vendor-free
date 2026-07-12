@@ -1,0 +1,24 @@
+{
+  "name": "ai-google",
+  "version": "2.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test-prompt.js",
+    "discover": "node discover.js --all",
+    "discover:google": "node discover.js --service google-ai",
+    "discover:chatgpt": "node discover.js --service chatgpt",
+    "discover:claude": "node discover.js --service claude",
+    "discover:gemini": "node discover.js --service gemini",
+    "discover:brave": "node discover.js --service brave-leo"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "High-resilience local browser orchestration framework",
+  "dependencies": {
+    "chrome-remote-interface": "^0.34.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}
