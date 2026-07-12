@@ -190,6 +190,17 @@ class Supervisor {
         await this.ensureTabFocused();
         await sleep(uniform(300, 700));
 
+        const baselineSnapshot = await evaluate(this.cdp, `
+            JSON.stringify({
+                messageCount: ((document.body.innerText || '').match(/You said:/g) || []).length,
+                copyCount: Array.from(document.querySelectorAll('button[aria-label*="Copy" i], [data-tooltip*="Copy" i]')).filter(b => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0 && b.offsetParent !== null; }).length
+            })
+        `, this.sessionId);
+        const parsed = typeof baselineSnapshot === 'string' ? JSON.parse(baselineSnapshot) : (baselineSnapshot || {});
+        const baselineMessageCount = parsed.messageCount || 0;
+        const baselineCopyCount = parsed.copyCount || 0;
+        logger('info', `Baseline: messages=${baselineMessageCount}, copyButtons=${baselineCopyCount}`);
+
         const inputInfo = await this.service.findInput(this.cdp, this.sessionId);
         if (!inputInfo || !inputInfo.found) {
             throw new Error('Could not locate input element');
@@ -228,7 +239,7 @@ class Supervisor {
         setState('currentState', STATES.GENERATING);
         logger('info', 'Prompt dispatched, monitoring response...');
 
-        const monitor = new ResponseMonitor(this.cdp, this.service, this.sessionId);
+        const monitor = new ResponseMonitor(this.cdp, this.service, this.sessionId, baselineMessageCount, baselineCopyCount);
         const result = await monitor.waitForResponse();
 
         if (result.status === 'error') {

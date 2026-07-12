@@ -18,15 +18,16 @@ No lint, typecheck, or test framework. No CI.
 ## Architecture
 
 ```
-index.js              → Express API (POST /ask, GET /health)
+index.js              → Express API (POST /ask, POST /chat, GET /chat/threads, GET /chat/:id, DELETE /chat/:id, POST /chat/:id/new, GET /health)
 discover.js           → Standalone reconnaissance CLI (DOM scanning)
 src/browser.js        → Chrome spawn, CDP connect, tab session management
 src/supervisor.js     → Target polling (2s), prompt queue, reconnection, auto-reconstruct
 src/dom.js            → Input/button detection via ARIA roles + spatial analysis (no class selectors)
 src/typing.js         → Character-by-character CDP dispatch with stochastic delays
-src/monitor.js        → 400ms polling for success/error/security-challenge signatures
+src/monitor.js        → 400ms polling for success/error/security-challenge signatures, baseline snapshot tracking
 src/maintenance.js    → Keep-alive heartbeat every 12min, idle jitter cooldowns
-src/state.js          → In-memory state cache (IDLE/TYPING/GENERATING/ERROR_RECOVERY)
+src/state.js          → In-memory state cache (IDLE/TYPING/GENERATING/ERROR_RECOVERY), activeThreadId
+src/conversation.js   → In-memory thread store with CRUD operations, 1hr TTL auto-cleanup
 src/services/         → Service adapters (base.js interface, registry.js, google-ai.js + 4 stubs)
 ```
 
@@ -78,6 +79,12 @@ The report includes: input selectors, send button selectors, response container 
 - **Monitor timeout**: Response polling times out after 90s (`MAX_WAIT_MS` in `src/monitor.js`).
 - **Supervisor queue**: `enqueuePrompt(text)` returns a Promise. Calling it while processing queues the prompt. The resolved value is `{ result: string }`.
 - **Reconnection**: If CDP disconnects, the supervisor auto-reconnects with exponential backoff. If max attempts reached, Chrome is relaunched.
+- **Google AI has NO visible send button**: `findSendButton` in `google-ai.js` returns `null` to force Enter key submission.
+- **`findInputElement` filters by visibility**: Uses `querySelectorAll` + checks `getBoundingClientRect().width > 50 && height > 10 && offsetParent !== null` to skip hidden textareas (Google AI has multiple hidden textareas).
+- **`findSendButton` exclusion list**: Skips Microphone, Settings, dictation, sidebar, etc. via `SEND_BUTTON_EXCLUSIONS` array.
+- **`detectSuccess` uses baseline tracking**: Before each prompt, snapshots the count of `"You said:"` occurrences and visible Copy buttons. Only declares success when BOTH counts increase beyond baseline, preventing premature detection from stale Copy buttons on follow-ups.
+- **`extractResponse` for multi-turn**: Uses `lastIndexOf('You said:')` for start position, checks end markers `['AI Mode response is ready', 'AI can make mistakes']` (whichever comes first after start); copy-parent fallback uses last Copy button with threshold >100 chars.
+- **Thread management**: In-memory `conversation.js` store with 1hr TTL auto-cleanup; single-tab architecture (one active thread at a time, switching navigates to fresh AI Mode).
 
 ## Environment
 
@@ -89,3 +96,21 @@ The report includes: input selectors, send button selectors, response container 
 1. `npm start` (wait for "Initialization complete" log)
 2. `npm test` or `curl -X POST http://localhost:3000/ask -H "Content-Type: application/json" -d '{"prompt":"test"}'`
 3. `GET /health` returns current state, CDP connection status, and uptime
+4. Multi-turn chat:
+   ```bash
+   # Start new conversation
+   curl -X POST http://localhost:3000/chat -H "Content-Type: application/json" -d '{"message":"What is the capital of France?"}'
+   # Returns { thread_id, response, history }
+
+   # Follow-up (include thread_id)
+   curl -X POST http://localhost:3000/chat -H "Content-Type: application/json" -d '{"message":"What is its population?","thread_id":"<id>"}'
+
+   # List all threads
+   curl http://localhost:3000/chat/threads
+
+   # Get thread messages
+   curl http://localhost:3000/chat/<thread_id>
+
+   # Delete thread
+   curl -X DELETE http://localhost:3000/chat/<thread_id>
+   ```

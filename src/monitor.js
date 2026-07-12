@@ -6,10 +6,12 @@ const MAX_WAIT_MS = 90000;
 const CHALLENGE_ALERT_BELL = '\x07';
 
 class ResponseMonitor {
-    constructor(cdp, service, sessionId) {
+    constructor(cdp, service, sessionId, baselineMessageCount = 0, baselineCopyCount = 0) {
         this.cdp = cdp;
         this.service = service;
         this.sessionId = sessionId;
+        this.baselineMessageCount = baselineMessageCount;
+        this.baselineCopyCount = baselineCopyCount;
     }
 
     setSessionId(sessionId) {
@@ -51,7 +53,7 @@ class ResponseMonitor {
 
     async checkSuccess() {
         try {
-            const result = await this.service.detectSuccess(this.cdp, this.sessionId);
+            const result = await this.service.detectSuccess(this.cdp, this.sessionId, this.baselineMessageCount, this.baselineCopyCount);
             if (!result) return { done: false };
             const parsed = typeof result === 'string' ? JSON.parse(result) : result;
             return parsed;

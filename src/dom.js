@@ -20,16 +20,26 @@ async function findInputElement(cdp, sessionId) {
     for (const keyword of INPUT_ARIA_KEYWORDS) {
         const nodeId = await evaluate(cdp, `
             (function() {
-                const ta = document.querySelector('textarea[aria-label*="${keyword}" i]');
-                if (ta) return JSON.stringify({
-                    found: true, method: 'aria-label', selector: 'textarea[aria-label*="${keyword}" i]',
-                    rect: ta.getBoundingClientRect()
-                });
-                const ce = document.querySelector('[contenteditable="true"][aria-label*="${keyword}" i]');
-                if (ce) return JSON.stringify({
-                    found: true, method: 'aria-label-ce', selector: '[contenteditable="true"][aria-label*="${keyword}" i]',
-                    rect: ce.getBoundingClientRect()
-                });
+                const tas = Array.from(document.querySelectorAll('textarea[aria-label*="${keyword}" i]'));
+                for (const ta of tas) {
+                    const r = ta.getBoundingClientRect();
+                    if (r.width > 50 && r.height > 10 && ta.offsetParent !== null) {
+                        return JSON.stringify({
+                            found: true, method: 'aria-label', selector: 'textarea[aria-label*="${keyword}" i]',
+                            rect: r
+                        });
+                    }
+                }
+                const ces = Array.from(document.querySelectorAll('[contenteditable="true"][aria-label*="${keyword}" i]'));
+                for (const ce of ces) {
+                    const r = ce.getBoundingClientRect();
+                    if (r.width > 50 && r.height > 10 && ce.offsetParent !== null) {
+                        return JSON.stringify({
+                            found: true, method: 'aria-label-ce', selector: '[contenteditable="true"][aria-label*="${keyword}" i]',
+                            rect: r
+                        });
+                    }
+                }
                 return null;
             })()
         `, sessionId);
@@ -43,11 +53,16 @@ async function findInputElement(cdp, sessionId) {
     for (const keyword of INPUT_ARIA_KEYWORDS) {
         const nodeId = await evaluate(cdp, `
             (function() {
-                const ta = document.querySelector('textarea[placeholder*="${keyword}" i]');
-                if (ta) return JSON.stringify({
-                    found: true, method: 'placeholder', selector: 'textarea[placeholder*="${keyword}" i]',
-                    rect: ta.getBoundingClientRect()
-                });
+                const tas = Array.from(document.querySelectorAll('textarea[placeholder*="${keyword}" i]'));
+                for (const ta of tas) {
+                    const r = ta.getBoundingClientRect();
+                    if (r.width > 50 && r.height > 10 && ta.offsetParent !== null) {
+                        return JSON.stringify({
+                            found: true, method: 'placeholder', selector: 'textarea[placeholder*="${keyword}" i]',
+                            rect: r
+                        });
+                    }
+                }
                 return null;
             })()
         `, sessionId);

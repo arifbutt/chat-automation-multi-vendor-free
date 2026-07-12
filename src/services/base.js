@@ -30,7 +30,7 @@ class BaseService {
         throw new Error('extractResponse() not implemented');
     }
 
-    async detectSuccess(cdp) {
+    async detectSuccess(cdp, sessionId, baselineMessageCount, baselineCopyCount) {
         throw new Error('detectSuccess() not implemented');
     }
 

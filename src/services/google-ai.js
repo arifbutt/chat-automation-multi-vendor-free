@@ -37,9 +37,12 @@ class GoogleAIService extends BaseService {
         return null;
     }
 
-    async detectSuccess(cdp, sessionId) {
+    async detectSuccess(cdp, sessionId, baselineMessageCount = 0, baselineCopyCount = 0) {
         return await evaluate(cdp, `
             (function() {
+                const baseline = ${baselineMessageCount};
+                const baselineCopy = ${baselineCopyCount};
+
                 const stopBtns = document.querySelectorAll('button[aria-label*="Stop" i]');
                 for (const btn of stopBtns) {
                     const r = btn.getBoundingClientRect();
@@ -48,12 +51,24 @@ class GoogleAIService extends BaseService {
                     }
                 }
 
+                const bodyText = document.body.innerText || '';
+                const messageCount = (bodyText.match(/You said:/g) || []).length;
+
+                if (messageCount <= baseline) {
+                    return JSON.stringify({ done: false, reason: 'no-new-message', messageCount, baseline });
+                }
+
                 const copyBtns = document.querySelectorAll('button[aria-label*="Copy" i], [data-tooltip*="Copy" i]');
+                let visibleCopyCount = 0;
                 for (const btn of copyBtns) {
                     const r = btn.getBoundingClientRect();
                     if (r.width > 0 && r.height > 0 && btn.offsetParent !== null) {
-                        return JSON.stringify({ done: true, reason: 'copy-button-found' });
+                        visibleCopyCount++;
                     }
+                }
+
+                if (visibleCopyCount > baselineCopy) {
+                    return JSON.stringify({ done: true, reason: 'new-response-detected', messageCount, visibleCopyCount, baseline, baselineCopy });
                 }
 
                 const cursorBlink = document.querySelector('.typing-indicator, .cursor-blink, [class*="blinking"], [class*="loading-dots"]');
@@ -61,7 +76,7 @@ class GoogleAIService extends BaseService {
                     return JSON.stringify({ done: false, reason: 'cursor-blinking' });
                 }
 
-                return JSON.stringify({ done: false, reason: 'still-generating' });
+                return JSON.stringify({ done: false, reason: 'waiting-for-copy-button', messageCount, visibleCopyCount, baseline, baselineCopy });
             })()
         `, sessionId);
     }
@@ -122,21 +137,29 @@ class GoogleAIService extends BaseService {
             (function() {
                 const bodyText = (document.body.innerText || '').trim();
                 const startMarker = 'You said:';
-                const endMarker = 'AI can make mistakes';
-                const startIdx = bodyText.indexOf(startMarker);
-                const endIdx = bodyText.indexOf(endMarker);
-                if (startIdx >= 0 && endIdx > startIdx) {
-                    const between = bodyText.substring(startIdx + startMarker.length, endIdx).trim();
-                    const lines = between.split('\\n').map(l => l.trim()).filter(Boolean);
-                    if (lines.length >= 2) {
-                        const responseText = lines.slice(1).join('\\n\\n');
-                        if (responseText.length > 10) {
-                            return JSON.stringify({ text: responseText, method: 'markers', length: responseText.length });
+                const endMarkers = ['AI Mode response is ready', 'AI can make mistakes'];
+
+                const startIdx = bodyText.lastIndexOf(startMarker);
+                if (startIdx >= 0) {
+                    let endIdx = -1;
+                    for (const marker of endMarkers) {
+                        const idx = bodyText.indexOf(marker, startIdx);
+                        if (idx > endIdx) endIdx = idx;
+                    }
+                    if (endIdx > startIdx) {
+                        const between = bodyText.substring(startIdx + startMarker.length, endIdx).trim();
+                        const lines = between.split('\\n').map(l => l.trim()).filter(Boolean);
+                        if (lines.length >= 2) {
+                            const responseText = lines.slice(1).join('\\n\\n');
+                            if (responseText.length > 10) {
+                                return JSON.stringify({ text: responseText, method: 'markers', length: responseText.length });
+                            }
                         }
                     }
                 }
 
-                const copyBtn = document.querySelector('button[aria-label*="Copy text"], button[aria-label*="Copy" i]');
+                const copyBtns = document.querySelectorAll('button[aria-label*="Copy text"], button[aria-label*="Copy" i]');
+                const copyBtn = copyBtns.length ? copyBtns[copyBtns.length - 1] : null;
                 if (copyBtn) {
                     let el = copyBtn;
                     for (let i = 0; i < 10 && el; i++) {

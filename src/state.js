@@ -13,7 +13,8 @@ const cache = {
     currentService: null,
     lastResponseTimestamp: null,
     targetId: null,
-    retryCount: 0
+    retryCount: 0,
+    activeThreadId: null
 };
 
 function getState() {
