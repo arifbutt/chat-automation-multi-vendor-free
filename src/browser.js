@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
 const CDP = require('chrome-remote-interface');
 const { logger, sleep, retry } = require('./utils');
 
@@ -15,7 +16,8 @@ const CHROME_FLAGS = [
     '--disable-features=CalculateNativeWinOcclusion',
     '--no-first-run',
     '--disable-default-apps',
-    '--disable-session-crashed-bubble'
+    '--disable-session-crashed-bubble',
+    '--no-default-browser-check'
 ];
 
 if (process.env.HEADLESS === 'true' || process.env.HEADLESS === '1') {
@@ -48,6 +50,25 @@ function findChromePath() {
     return 'chromium-browser';
 }
 
+function cleanExitType() {
+    try {
+        const prefsPath = path.join(USER_DATA_DIR, 'Default', 'Preferences');
+        if (!fs.existsSync(prefsPath)) return;
+        const raw = fs.readFileSync(prefsPath, 'utf8');
+        const prefs = JSON.parse(raw);
+        if (prefs.profile) {
+            if (prefs.profile.exit_type === 'Crashed' || prefs.profile.exit_type === 'Session Ended') {
+                prefs.profile.exit_type = 'Normal';
+                prefs.profile.exited_cleanly = true;
+                fs.writeFileSync(prefsPath, JSON.stringify(prefs));
+                logger('info', `Cleaned exit_type: ${prefs.profile.exit_type}`);
+            }
+        }
+    } catch (err) {
+        logger('warn', `Could not clean Preferences: ${err.message}`);
+    }
+}
+
 function launchBrowser() {
     if (chromeProcess && !chromeProcess.killed) {
         logger('info', 'Chrome already running');
@@ -56,6 +77,8 @@ function launchBrowser() {
 
     const chromePath = findChromePath();
     logger('info', `Launching Chrome from: ${chromePath}`);
+
+    cleanExitType();
 
     chromeProcess = spawn(chromePath, CHROME_FLAGS, {
         detached: false,
